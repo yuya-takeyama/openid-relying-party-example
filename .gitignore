@@ -1,1 +1,4 @@
+*.swp
+/tmp/*
 /vendor
+!/vendor/.gitkeep
