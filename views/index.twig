@@ -1,0 +1,36 @@
+{% extends layout %}
+
+{% block content %}
+<h1>PHP OpenID Authentication Example</h1>
+<p>
+  This example consumer uses the <a
+  href="http://github.com/openid/php-openid">PHP
+  OpenID</a> library. It just verifies that the URL that you enter
+  is your identity URL.
+</p>
+
+{% for type, flashMessages in app.session.flashbag.all() %}
+    {% for flashMessage in flashMessages %}
+        <div class="{{ type }}">
+            {{ flashMessage }}
+        </div>
+    {% endfor %}
+{% endfor %}
+
+<div id="verify-form">
+  <form method="post" action="/auth/openid/try">
+    Identity&nbsp;URL:
+    <input type="hidden" name="action" value="verify" />
+    <input type="text" name="openid_identifier" value="" />
+
+    <p>Optionally, request these PAPE policies:</p>
+    <p>
+{% for uri in pape_policy_uris %}
+      <input type="checkbox" name="policies[]" value="{{ uri }}" /> {{ uri }} <br />
+{% endfor %}
+    </p>
+
+    <input type="submit" value="Verify" />
+  </form>
+</div>
+{% endblock %}
