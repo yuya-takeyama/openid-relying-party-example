@@ -31,6 +31,8 @@ $app->register(new \Silex\Provider\TwigServiceProvider, array(
 ));
 
 $app->before(function () use ($app) {
+    $app['session']->start();
+
     $app['twig']->addGlobal('layout', $app['twig']->loadTemplate('layout.twig'));
     $app['twig']->addGlobal('session', $app['session']);
 
@@ -42,13 +44,17 @@ $app->before(function () use ($app) {
         PAPE_AUTH_MULTI_FACTOR,
         PAPE_AUTH_PHISHING_RESISTANT,
     ));
+
+    $app['flash'] = $app->share(function ($app) use ($app) {
+        return $app['session']->getFlashBag();
+    });
 });
 
 $app->post('/auth/openid/try', function (Request $req) use ($app) {
     $openId = $req->get('openid_identifier');
 
     if (is_null($openId)) {
-        $app['session']->getFlashBag()->set('warning', 'Expected an OpenID URL.');
+        $app['flash']->set('warning', 'Expected an OpenID URL.');
 
         return $app->redirect('/');
     }
@@ -57,7 +63,7 @@ $app->post('/auth/openid/try', function (Request $req) use ($app) {
     $authReq  = $consumer->begin($openId);
 
     if (!$authReq) {
-        $app['session']->getFlashBag()->set('error', 'Authentication Error; not a valid OpenID.');
+        $app['flash']->set('error', 'Authentication Error; not a valid OpenID.');
 
         return $app->redirect('/');
     }
@@ -78,7 +84,7 @@ $app->post('/auth/openid/try', function (Request $req) use ($app) {
         $redirectUrl = $authReq->redirectURL($trustRoot, $returnTo);
 
         if (Auth_OpenID::isFailure($redirectUrl)) {
-            $app['session']->getFlashBag()->set('error', 'Could not redirect to server: ' . $redirectUrl->message);
+            $app['flash']->set('error', 'Could not redirect to server: ' . $redirectUrl->message);
 
             return $app->redirect('/');
         } else {
@@ -93,12 +99,46 @@ $app->post('/auth/openid/try', function (Request $req) use ($app) {
         );
 
         if (Auth_OpenID::isFailure($formHtml)) {
-            $app['session']->getFlashBag()->set('error', 'Could not redirect to server: ' . $formHtml->message);
+            $app['flash']->set('error', 'Could not redirect to server: ' . $formHtml->message);
 
             return $app->redirect('/');
         } else {
             return $formHtml;
         }
+    }
+});
+
+$app->get('/auth/openid/finish', function (Request $req) use ($app) {
+    $consumer = $app['openid.consumer'];
+    $returnTo = "{$app['server.root']}/auth/openid/finish";
+    $authRes  = $consumer->complete($returnTo);
+
+    if ($authRes->status === Auth_OpenID_CANCEL) {
+        $app['flash']->set('alert', 'Verification cancelled.');
+
+        return $app->redirect('/');
+    } else if ($authRes->status === Auth_OpenID_FAILURE) {
+        $app['flash']->set('error', 'OpenID authentication failed: ' . $authRes->message);
+    } else if ($authRes->status === Auth_OpenID_SUCCESS) {
+        $openId = $authRes->getDisplayIdentifier();
+
+        $message = sprintf('You have successfully verified %s as your identity.', $openId);
+
+        if ($authRes->endpoint->canonicalID) {
+            $message .= sprintf(' (XRI CanonicalID: %s)', $authRes->endpoint->canonicalID);
+        }
+
+        $sregRes = Auth_OPenID_SRegResponse::fromSuccessResponse($authRes);
+
+        $sreg = $sregRes->contents();
+
+        foreach ($sreg as $key => $value) {
+            $message .= sprintf(" Your '%s' is '%s'.", $key, $value);
+        }
+
+        $app['flash']->set('success', $message);
+
+        return $app->redirect('/');
     }
 });
 
